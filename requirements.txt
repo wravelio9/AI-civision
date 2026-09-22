@@ -1,6 +1,15 @@
+# AI service (FastAPI + YOLO) dependencies untuk deployment.
+# Catatan penting:
+# - opencv-python-headless: versi tanpa GUI, WAJIB untuk server/container.
+# - torch CPU-only diambil dari index resmi PyTorch (jauh lebih kecil dari versi CUDA).
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 fastapi
 uvicorn[standard]
 python-multipart
 ultralytics
-opencv-python
+opencv-python-headless
 numpy
+torch
+torchvision

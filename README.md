@@ -1,6 +1,18 @@
+---
+title: Civision AI Detection
+emoji: 🛒
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # Civision — AI Detection Service
 
 Deteksi objek YOLO yang diekspos sebagai HTTP service, dipanggil oleh Backend Express.js.
+
+> **Deploy gratis di Hugging Face Spaces** — lihat bagian "Deploy gratis (Hugging Face Spaces)" di bawah.
 
 ## Arsitektur
 
@@ -113,3 +125,33 @@ Konfigurasi lewat env: `AI_SERVICE_URL` (default `http://localhost:8000`), `PORT
 - `outputs/` (gambar hasil) dan `.venv/`, `runs/`, `node_modules/` sudah di-ignore git.
 - Gambar hasil menumpuk di `outputs/`; jadwalkan pembersihan berkala kalau volume tinggi.
 - Untuk beban tinggi, jalankan uvicorn dengan beberapa worker atau di belakang reverse proxy.
+
+---
+
+## Deploy gratis (Hugging Face Spaces)
+
+Hugging Face Spaces gratis, tanpa kartu kredit, dan punya RAM besar (cukup untuk torch + YOLO).
+
+1. Buat akun di https://huggingface.co (gratis).
+2. Klik **New** → **Space**.
+3. Isi:
+   - **Owner**: akun kamu
+   - **Space name**: mis. `civision-ai`
+   - **SDK**: pilih **Docker**
+   - **Visibility**: Public (gratis)
+4. Setelah Space dibuat, kamu punya git repo baru dari HF. Push kode ke situ:
+   ```powershell
+   git remote add hf https://huggingface.co/spaces/<username>/civision-ai
+   git push hf main
+   ```
+   (login pakai token dari https://huggingface.co/settings/tokens)
+5. HF otomatis build Dockerfile dan menjalankannya. Tunggu status jadi **Running**.
+6. URL service kamu: `https://<username>-civision-ai.hf.space`
+   - Cek: buka `https://<username>-civision-ai.hf.space/health`
+
+### Hubungkan BE
+Set di Express: `AI_SERVICE_URL=https://<username>-civision-ai.hf.space`
+
+### Catatan free tier
+- Space "tidur" setelah lama tidak ada trafik; request pertama agak lambat (bangun dulu).
+- Tidak perlu set `PUBLIC_BASE_URL` — `app.py` otomatis pakai URL request.

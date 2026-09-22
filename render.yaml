@@ -1,0 +1,15 @@
+# Konfigurasi deploy Render untuk AI service.
+# Cara pakai: push repo ke GitHub, lalu di Render pilih "New +" -> "Blueprint",
+# arahkan ke repo ini. Render akan membaca file ini otomatis.
+services:
+  - type: web
+    name: civision-ai
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free            # ganti ke starter/standard kalau butuh RAM lebih besar
+    healthCheckPath: /health
+    envVars:
+      # Kosongkan PUBLIC_BASE_URL: app.py otomatis pakai URL request.
+      # Batasi origin BE kamu di produksi (ganti dengan domain BE-mu).
+      - key: ALLOWED_ORIGINS
+        value: "*"

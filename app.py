@@ -13,7 +13,7 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, Request, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -37,15 +37,23 @@ def _find_trained_model() -> Path:
     baru dibuat, jadi tidak perlu mengubah path manual tiap training ulang.
     Bisa dioverride lewat env MODEL_PATH.
     """
+    # 1. Override eksplisit lewat env (dipakai di produksi/Docker kalau perlu).
     override = os.environ.get("MODEL_PATH")
     if override and Path(override).exists():
         return Path(override)
 
+    # 2. Model yang di-commit ke repo (dipakai saat deploy, mis. di Render).
+    #    runs/ di-gitignore, jadi best.pt disalin ke model/best.pt agar ikut deploy.
+    committed = BASE_DIR / "model" / "best.pt"
+    if committed.exists():
+        return committed
+
+    # 3. Hasil training lokal terbaru di runs/detect/*/weights/best.pt.
     candidates = list((BASE_DIR / "runs" / "detect").glob("*/weights/best.pt"))
     if candidates:
-        # Ambil yang paling baru dimodifikasi.
         return max(candidates, key=lambda p: p.stat().st_mtime)
 
+    # 4. Fallback ke model dasar.
     return FALLBACK_MODEL
 
 
@@ -167,6 +175,7 @@ def health():
 
 @app.post("/predict")
 async def predict(
+    request: Request,
     files: list[UploadFile] = File(..., description="Satu atau banyak file gambar"),
     conf: float = DEFAULT_CONF,
 ):
@@ -179,9 +188,12 @@ async def predict(
     if not files:
         raise HTTPException(status_code=400, detail="Tidak ada file yang dikirim.")
 
-    # base_url dipakai untuk menyusun link gambar hasil. Diambil dari env kalau di-set,
-    # kalau tidak pakai localhost default.
-    base_url = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
+    # base_url dipakai untuk menyusun link gambar hasil.
+    # Prioritas: env PUBLIC_BASE_URL -> kalau tidak, ambil otomatis dari request
+    # (jadi di Render/host mana pun URL gambar langsung benar tanpa konfigurasi).
+    base_url = os.environ.get("PUBLIC_BASE_URL", "").strip()
+    if not base_url:
+        base_url = str(request.base_url).rstrip("/")
 
     results_out = []
     errors = []

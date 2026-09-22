@@ -1,0 +1,33 @@
+# Jangan ikutkan file besar / tidak perlu ke dalam image Docker.
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+
+# Dataset & hasil training tidak dibutuhkan saat runtime (model sudah di model/best.pt).
+dataset/
+runs/
+*.cache
+
+# Model dasar besar tidak perlu (pakai model/best.pt).
+yolo26n.pt
+yolo11*.pt
+
+# Output runtime.
+outputs/
+
+# Node contoh BE.
+examples/
+node_modules/
+
+# Git & editor.
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Docs / config yang tidak dipakai runtime.
+README.md
+vidToFrame.py
+yolo.py
