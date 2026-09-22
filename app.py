@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from ultralytics import YOLO
@@ -23,11 +24,32 @@ from ultralytics import YOLO
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
 
-# Model utama = hasil training (best.pt). Kalau belum ada, fallback ke model
-# dasar supaya service tetap bisa dijalankan & dites.
-PREFERRED_MODEL = BASE_DIR / "runs" / "detect" / "train" / "weights" / "best.pt"
+# Model dasar (fallback) kalau belum ada hasil training.
 FALLBACK_MODEL = BASE_DIR / "yolo26n.pt"
-MODEL_PATH = PREFERRED_MODEL if PREFERRED_MODEL.exists() else FALLBACK_MODEL
+
+
+def _find_trained_model() -> Path:
+    """
+    Cari best.pt hasil training terbaru di runs/detect/*/weights/best.pt.
+
+    Setiap kali `yolo train` dijalankan, hasilnya masuk ke folder baru
+    (train, train2, train3, ...). Fungsi ini memilih best.pt yang paling
+    baru dibuat, jadi tidak perlu mengubah path manual tiap training ulang.
+    Bisa dioverride lewat env MODEL_PATH.
+    """
+    override = os.environ.get("MODEL_PATH")
+    if override and Path(override).exists():
+        return Path(override)
+
+    candidates = list((BASE_DIR / "runs" / "detect").glob("*/weights/best.pt"))
+    if candidates:
+        # Ambil yang paling baru dimodifikasi.
+        return max(candidates, key=lambda p: p.stat().st_mtime)
+
+    return FALLBACK_MODEL
+
+
+MODEL_PATH = _find_trained_model()
 
 # Folder untuk menyimpan gambar hasil anotasi, lalu disajikan sebagai file statis.
 OUTPUT_DIR = BASE_DIR / "outputs"
@@ -39,10 +61,30 @@ DEFAULT_CONF = 0.5
 # Ekstensi gambar yang diterima.
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/bmp"}
 
+# Daftar origin yang boleh mengakses AI service (untuk request dari browser).
+# Set lewat env ALLOWED_ORIGINS, dipisah koma, mis:
+#   ALLOWED_ORIGINS=http://localhost:3000,https://app.domainmu.com
+# Default "*" mengizinkan semua origin (praktis untuk development).
+_origins_env = os.environ.get("ALLOWED_ORIGINS", "*").strip()
+ALLOWED_ORIGINS = ["*"] if _origins_env == "*" else [
+    o.strip() for o in _origins_env.split(",") if o.strip()
+]
+
 # ---------------------------------------------------------------------------
 # Inisialisasi aplikasi + load model SEKALI saja (bukan per-request)
 # ---------------------------------------------------------------------------
 app = FastAPI(title="Civision AI Detection Service", version="1.0.0")
+
+# CORS: izinkan BE (origin/port berbeda) memanggil service ini.
+# Catatan: server-to-server (mis. Express -> AI via axios) tidak butuh CORS,
+# tapi ini diperlukan kalau ada request langsung dari browser/frontend.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Sajikan folder outputs supaya BE bisa mengambil gambar hasil lewat URL.
 app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
