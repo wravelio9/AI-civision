@@ -19,3 +19,9 @@ dataset/**/labels.cache
 Thumbs.db
 .vscode/
 .idea/
+
+# AI service annotated output images
+outputs/
+
+# Node (examples/)
+node_modules/

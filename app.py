@@ -1,0 +1,166 @@
+"""
+AI service untuk deteksi objek YOLO.
+
+Alur:
+    BE Express upload foto -> POST /predict (service ini) -> proses YOLO
+    -> balas JSON deteksi + URL gambar hasil yang sudah digambari kotak.
+
+Jalankan:
+    uvicorn app:app --host 0.0.0.0 --port 8000
+"""
+
+import os
+import uuid
+from pathlib import Path
+
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from ultralytics import YOLO
+
+# ---------------------------------------------------------------------------
+# Konfigurasi
+# ---------------------------------------------------------------------------
+BASE_DIR = Path(__file__).resolve().parent
+
+# Model utama = hasil training (best.pt). Kalau belum ada, fallback ke model
+# dasar supaya service tetap bisa dijalankan & dites.
+PREFERRED_MODEL = BASE_DIR / "runs" / "detect" / "train" / "weights" / "best.pt"
+FALLBACK_MODEL = BASE_DIR / "yolo26n.pt"
+MODEL_PATH = PREFERRED_MODEL if PREFERRED_MODEL.exists() else FALLBACK_MODEL
+
+# Folder untuk menyimpan gambar hasil anotasi, lalu disajikan sebagai file statis.
+OUTPUT_DIR = BASE_DIR / "outputs"
+OUTPUT_DIR.mkdir(exist_ok=True)
+
+# Ambang confidence default. Bisa dioverride lewat query ?conf=
+DEFAULT_CONF = 0.5
+
+# Ekstensi gambar yang diterima.
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/bmp"}
+
+# ---------------------------------------------------------------------------
+# Inisialisasi aplikasi + load model SEKALI saja (bukan per-request)
+# ---------------------------------------------------------------------------
+app = FastAPI(title="Civision AI Detection Service", version="1.0.0")
+
+# Sajikan folder outputs supaya BE bisa mengambil gambar hasil lewat URL.
+app.mount("/outputs", StaticFiles(directory=str(OUTPUT_DIR)), name="outputs")
+
+print(f"[startup] Loading model: {MODEL_PATH}")
+model = YOLO(str(MODEL_PATH))
+print("[startup] Model loaded. Ready.")
+
+
+# ---------------------------------------------------------------------------
+# Helper
+# ---------------------------------------------------------------------------
+def _base_url(request_host: str) -> str:
+    """Bangun base URL untuk link gambar hasil."""
+    return request_host.rstrip("/")
+
+
+def _run_detection(image_bytes: bytes, filename: str, conf: float, base_url: str) -> dict:
+    """Jalankan YOLO pada satu gambar, simpan hasil anotasi, kembalikan dict."""
+    import numpy as np
+    import cv2
+
+    # Decode bytes -> array gambar (BGR).
+    arr = np.frombuffer(image_bytes, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("File bukan gambar yang valid atau rusak.")
+
+    # Inference. verbose=False biar log tidak berisik.
+    results = model.predict(source=img, conf=conf, verbose=False)
+    result = results[0]
+
+    # Kumpulkan deteksi jadi list JSON-friendly.
+    detections = []
+    names = result.names  # {id: label}
+    for box in result.boxes:
+        cls_id = int(box.cls[0])
+        x1, y1, x2, y2 = box.xyxy[0].tolist()
+        detections.append(
+            {
+                "label": names.get(cls_id, str(cls_id)),
+                "class_id": cls_id,
+                "confidence": round(float(box.conf[0]), 4),
+                "bbox": {
+                    "x1": round(x1, 2),
+                    "y1": round(y1, 2),
+                    "x2": round(x2, 2),
+                    "y2": round(y2, 2),
+                },
+            }
+        )
+
+    # Simpan gambar hasil yang sudah digambari kotak.
+    annotated = result.plot()  # numpy array (BGR) dengan box tergambar
+    out_name = f"{uuid.uuid4().hex}.jpg"
+    out_path = OUTPUT_DIR / out_name
+    cv2.imwrite(str(out_path), annotated)
+
+    return {
+        "filename": filename,
+        "detections": detections,
+        "count": len(detections),
+        "annotated_image_url": f"{base_url}/outputs/{out_name}",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+@app.get("/health")
+def health():
+    """Cek service hidup + model apa yang dipakai."""
+    return {
+        "status": "ok",
+        "model": MODEL_PATH.name,
+        "model_path": str(MODEL_PATH),
+        "using_fallback": MODEL_PATH == FALLBACK_MODEL,
+    }
+
+
+@app.post("/predict")
+async def predict(
+    files: list[UploadFile] = File(..., description="Satu atau banyak file gambar"),
+    conf: float = DEFAULT_CONF,
+):
+    """
+    Terima satu atau banyak gambar, jalankan deteksi, balas hasil per gambar.
+
+    Form field: `files` (bisa lebih dari satu).
+    Query opsional: `conf` (ambang confidence, default 0.5).
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="Tidak ada file yang dikirim.")
+
+    # base_url dipakai untuk menyusun link gambar hasil. Diambil dari env kalau di-set,
+    # kalau tidak pakai localhost default.
+    base_url = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
+
+    results_out = []
+    errors = []
+
+    for f in files:
+        if f.content_type not in ALLOWED_CONTENT_TYPES:
+            errors.append(
+                {"filename": f.filename, "error": f"Tipe file tidak didukung: {f.content_type}"}
+            )
+            continue
+        try:
+            content = await f.read()
+            results_out.append(_run_detection(content, f.filename, conf, base_url))
+        except Exception as exc:  # noqa: BLE001 - kembalikan error per file, jangan gagalkan semua
+            errors.append({"filename": f.filename, "error": str(exc)})
+
+    return JSONResponse(
+        {
+            "success": True,
+            "conf": conf,
+            "results": results_out,
+            "errors": errors,
+        }
+    )
