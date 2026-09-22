@@ -1,0 +1,21 @@
+# Python virtual environment
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# YOLO / training outputs
+runs/
+*.cache
+dataset/**/labels.cache
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

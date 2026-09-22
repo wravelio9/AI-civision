@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 1
+names: ['gerobak']
+
+roboflow:
+  workspace: wilson-ravelio
+  project: civision
+  version: dataset
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/wilson-ravelio/civision/dataset/dataset
