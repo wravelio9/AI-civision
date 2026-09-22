@@ -25,6 +25,3 @@ outputs/
 
 # Cloudflare tunnel log (dibuat oleh start-ai.ps1)
 tunnel.log
-
-# Node (examples/)
-node_modules/

@@ -16,7 +16,7 @@ WORKDIR /app
 
 # Install dependency dulu (biar layer cache-nya efektif).
 COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
 # Salin kode + model. .dockerignore memastikan file besar/tak perlu tidak ikut.
 COPY app.py .
@@ -25,8 +25,8 @@ COPY model ./model
 # PORT disuntikkan oleh platform lewat env:
 #   - Hugging Face Spaces: 7860 (default di sini)
 #   - Render: menyuntikkan PORT-nya sendiri (otomatis meng-override)
-ENV PORT=7860
+
 EXPOSE 7860
 
 # Jalankan uvicorn. shell form supaya $PORT ter-expand.
-CMD uvicorn app:app --host 0.0.0.0 --port ${PORT}
+CMD ["uvicorn", "main:app". "--host", "0.0.0.0", "--port", "7680"]

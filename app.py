@@ -10,6 +10,8 @@ Jalankan:
 """
 
 import os
+import shutil
+import tempfile
 import uuid
 from pathlib import Path
 
@@ -18,6 +20,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from ultralytics import YOLO
+
+from vidToFrame import annotate_video
 
 # ---------------------------------------------------------------------------
 # Konfigurasi
@@ -68,6 +72,12 @@ DEFAULT_CONF = 0.5
 
 # Ekstensi gambar yang diterima.
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/webp", "image/bmp"}
+
+# Tipe video yang diterima untuk /predict-video.
+ALLOWED_VIDEO_TYPES = {
+    "video/mp4", "video/quicktime", "video/x-msvideo", "video/x-matroska",
+    "video/webm", "video/avi", "application/octet-stream",
+}
 
 # Daftar origin yang boleh mengakses AI service (untuk request dari browser).
 # Set lewat env ALLOWED_ORIGINS, dipisah koma, mis:
@@ -159,6 +169,17 @@ def _run_detection(image_bytes: bytes, filename: str, conf: float, base_url: str
     }
 
 
+def _predict_frame(frame, conf: float):
+    """
+    Jalankan YOLO pada satu frame video (numpy BGR).
+
+    Dipakai oleh annotate_video di vidToFrame.py. Mengembalikan
+    (frame_beranotasi, list_box) supaya video writer bisa menulisnya.
+    """
+    result = model.predict(source=frame, conf=conf, verbose=False)[0]
+    return result.plot(), list(result.boxes)
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -173,7 +194,7 @@ def health():
     }
 
 
-@app.post("/predict")
+@app.post("/predict-image")
 async def predict(
     request: Request,
     files: list[UploadFile] = File(..., description="Satu atau banyak file gambar"),
@@ -216,5 +237,73 @@ async def predict(
             "conf": conf,
             "results": results_out,
             "errors": errors,
+        }
+    )
+
+
+@app.post("/predict-video")
+async def predict_video(
+    request: Request,
+    file: UploadFile = File(..., description="Satu file video"),
+    conf: float = DEFAULT_CONF,
+):
+    """
+    Terima 1 video, proses frame-per-frame dengan YOLO, kembalikan video
+    beranotasi (kotak deteksi tergambar) + ringkasan deteksi.
+
+    Alur:
+        video masuk -> baca tiap frame -> prediksi -> gambar kotak
+        -> tulis ke video output -> balas URL video hasil.
+
+    Form field: `file` (satu video).
+    Query opsional: `conf` (ambang confidence, default 0.5).
+    """
+    if file.content_type not in ALLOWED_VIDEO_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tipe file tidak didukung: {file.content_type}. Kirim file video.",
+        )
+
+    base_url = os.environ.get("PUBLIC_BASE_URL", "").strip()
+    if not base_url:
+        base_url = str(request.base_url).rstrip("/")
+
+    # Simpan upload ke file sementara (OpenCV butuh path file, bukan bytes).
+    suffix = Path(file.filename or "video.mp4").suffix or ".mp4"
+    tmp_in = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            shutil.copyfileobj(file.file, tmp)
+            tmp_in = tmp.name
+
+        # Video hasil disimpan di outputs/ supaya bisa diakses lewat URL.
+        out_name = f"{uuid.uuid4().hex}.mp4"
+        out_path = OUTPUT_DIR / out_name
+
+        summary = annotate_video(
+            input_path=tmp_in,
+            output_path=str(out_path),
+            predict_frame=_predict_frame,
+            conf=conf,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Gagal memproses video: {exc}")
+    finally:
+        # Bersihkan file input sementara.
+        if tmp_in and os.path.exists(tmp_in):
+            try:
+                os.remove(tmp_in)
+            except OSError:
+                pass
+
+    return JSONResponse(
+        {
+            "success": True,
+            "conf": conf,
+            "filename": file.filename,
+            "summary": summary,
+            "annotated_video_url": f"{base_url}/outputs/{out_name}",
         }
     )
