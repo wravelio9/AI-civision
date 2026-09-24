@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from ultralytics import YOLO
 
 from vidToFrame import annotate_video
+from ocr import extract_coordinates_ex, is_ocr_available
 
 # ---------------------------------------------------------------------------
 # Konfigurasi
@@ -120,7 +121,9 @@ def _base_url(request_host: str) -> str:
     return request_host.rstrip("/")
 
 
-def _run_detection(image_bytes: bytes, filename: str, conf: float, base_url: str) -> dict:
+def _run_detection(
+    image_bytes: bytes, filename: str, conf: float, base_url: str, do_ocr: bool = True
+) -> dict:
     """Jalankan YOLO pada satu gambar, simpan hasil anotasi, kembalikan dict."""
     import numpy as np
     import cv2
@@ -155,6 +158,15 @@ def _run_detection(image_bytes: bytes, filename: str, conf: float, base_url: str
             }
         )
 
+    # OCR koordinat overlay (untuk foto tanpa EXIF GPS). Pakai gambar ASLI
+    # (bukan yang sudah digambari kotak) supaya teks tidak tertutup box.
+    # Cek OCR dulu: kalau di-nonaktifkan lewat flag -> "skipped";
+    # extract_coordinates_ex sendiri cek ketersediaan mesin OCR sebelum membaca.
+    if do_ocr:
+        ocr_result, ocr_status = extract_coordinates_ex(img)
+    else:
+        ocr_result, ocr_status = None, "skipped"
+
     # Simpan gambar hasil yang sudah digambari kotak.
     annotated = result.plot()  # numpy array (BGR) dengan box tergambar
     out_name = f"{uuid.uuid4().hex}.jpg"
@@ -165,6 +177,8 @@ def _run_detection(image_bytes: bytes, filename: str, conf: float, base_url: str
         "filename": filename,
         "detections": detections,
         "count": len(detections),
+        "ocr": ocr_result,          # {"lat", "lon"} atau None
+        "ocr_status": ocr_status,   # found | not_found | unavailable | skipped
         "annotated_image_url": f"{base_url}/outputs/{out_name}",
     }
 
@@ -185,12 +199,13 @@ def _predict_frame(frame, conf: float):
 # ---------------------------------------------------------------------------
 @app.get("/health")
 def health():
-    """Cek service hidup + model apa yang dipakai."""
+    """Cek service hidup + model apa yang dipakai + status OCR."""
     return {
         "status": "ok",
         "model": MODEL_PATH.name,
         "model_path": str(MODEL_PATH),
         "using_fallback": MODEL_PATH == FALLBACK_MODEL,
+        "ocr_available": is_ocr_available(),
     }
 
 
@@ -199,12 +214,16 @@ async def predict(
     request: Request,
     files: list[UploadFile] = File(..., description="Satu atau banyak file gambar"),
     conf: float = DEFAULT_CONF,
+    ocr: bool = True,
 ):
     """
     Terima satu atau banyak gambar, jalankan deteksi, balas hasil per gambar.
 
     Form field: `files` (bisa lebih dari satu).
-    Query opsional: `conf` (ambang confidence, default 0.5).
+    Query opsional:
+      - `conf` (ambang confidence, default 0.5).
+      - `ocr`  (baca koordinat overlay untuk foto tanpa EXIF, default true;
+                set false supaya lebih cepat kalau tidak perlu).
     """
     if not files:
         raise HTTPException(status_code=400, detail="Tidak ada file yang dikirim.")
@@ -227,7 +246,7 @@ async def predict(
             continue
         try:
             content = await f.read()
-            results_out.append(_run_detection(content, f.filename, conf, base_url))
+            results_out.append(_run_detection(content, f.filename, conf, base_url, do_ocr=ocr))
         except Exception as exc:  # noqa: BLE001 - kembalikan error per file, jangan gagalkan semua
             errors.append({"filename": f.filename, "error": str(exc)})
 

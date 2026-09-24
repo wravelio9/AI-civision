@@ -13,3 +13,4 @@ opencv-python-headless
 numpy
 torch
 torchvision
+easyocr
