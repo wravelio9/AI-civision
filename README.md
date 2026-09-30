@@ -24,12 +24,42 @@ Client --upload foto--> BE (Express.js) --POST /predict--> AI Service (FastAPI +
 - **AI Service** (`app.py`): FastAPI, load model YOLO sekali saat startup, endpoint `POST /predict` yang menerima banyak gambar sekaligus (batch).
 - **BE** (`examples/express-client.js`): contoh Express yang menerima upload dari client dan meneruskannya ke AI service.
 
-## 1. Setup AI Service
+## 0. Setup pertama kali (clone baru / dari teman)
 
-Sudah ada virtual environment di `.venv` (Python 3.11). Install dependency:
+Folder `.venv` **tidak dibagikan lewat git** (isinya binary khusus mesin & terlalu besar).
+Setelah clone repo, buat ulang virtual environment sendiri dari `requirements.lock.txt`
+(berisi versi PERSIS yang sudah teruji).
+
+Windows (PowerShell):
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.lock.txt
+```
+
+macOS / Linux:
+
+```bash
+python3.11 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.lock.txt
+```
+
+Catatan:
+- Pakai **Python 3.11** (versi lama seperti 3.7 tidak didukung model YOLO baru).
+- `requirements.lock.txt` = versi terkunci (paling aman, sama persis).
+  `requirements.txt` = daftar longgar (ambil versi terbaru) kalau mau update.
+- Setelah venv aktif (`(.venv)` muncul di prompt), lanjut ke bagian 1.
+
+## 1. Setup AI Service
+
+Setelah venv ada (lihat bagian 0), install dependency kalau belum:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock.txt
 ```
 
 Jalankan service:

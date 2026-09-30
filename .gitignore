@@ -1,7 +1,8 @@
 # Python virtual environment
 .venv/
-venv/
-env/
+.env
+
+.git/
 
 # Python cache
 __pycache__/
@@ -12,7 +13,7 @@ __pycache__/
 # YOLO / training outputs
 runs/
 *.cache
-dataset/**/labels.cache
+dataset/
 
 # OS / editor
 .DS_Store
