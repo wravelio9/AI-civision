@@ -28,8 +28,6 @@ node_modules/
 .idea/
 
 # Docs / config yang tidak dipakai runtime.
+# CATATAN: vidToFrame.py & ocr.py TIDAK di-ignore karena di-import app.py.
 README.md
-vidToFrame.py
 yolo.py
-
-examples/

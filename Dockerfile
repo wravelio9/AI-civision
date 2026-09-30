@@ -18,15 +18,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && pip install --no-cache-dir -r requirements.txt
 
-# Salin kode + model. .dockerignore memastikan file besar/tak perlu tidak ikut.
-COPY app.py .
+# Salin semua modul Python yang dipakai app + model.
+# app.py meng-import vidToFrame.py dan ocr.py, jadi ketiganya wajib ikut.
+COPY app.py vidToFrame.py ocr.py ./
 COPY model ./model
 
 # PORT disuntikkan oleh platform lewat env:
 #   - Hugging Face Spaces: 7860 (default di sini)
 #   - Render: menyuntikkan PORT-nya sendiri (otomatis meng-override)
-
+ENV PORT=7860
 EXPOSE 7860
 
-# Jalankan uvicorn. shell form supaya $PORT ter-expand.
-CMD ["uvicorn", "main:app". "--host", "0.0.0.0", "--port", "7680"]
+# Jalankan uvicorn. SHELL FORM (tanpa []) supaya ${PORT} ter-expand oleh shell.
+CMD uvicorn app:app --host 0.0.0.0 --port ${PORT}
