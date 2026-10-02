@@ -1,0 +1,5 @@
+# Tooling untuk EXPORT & VERIFIKASI ONNX (dijalankan sekali di mesin dev,
+# bukan dependency runtime browser). Butuh juga ultralytics + torch dari
+# requirements.txt untuk membuka best.pt saat export.
+onnx>=1.15.0
+onnxruntime>=1.17.0

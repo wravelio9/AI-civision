@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CiVision — Demo Deteksi PKL (ONNX di Browser)</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 24px; max-width: 900px; }
+      #canvas { max-width: 100%; border: 1px solid #ccc; margin-top: 12px; }
+      #out { white-space: pre-wrap; background: #f5f5f5; padding: 12px; border-radius: 6px; }
+      .muted { color: #666; }
+    </style>
+  </head>
+  <body>
+    <h1>CiVision — Deteksi PKL di Browser</h1>
+    <p class="muted">
+      Inference YOLO lokal via ONNX Runtime Web. Tidak ada server Python.
+    </p>
+
+    <input type="file" id="file" accept="image/*" />
+    <div id="status" class="muted">Memuat model...</div>
+    <canvas id="canvas"></canvas>
+    <h3>Hasil</h3>
+    <div id="out">-</div>
+
+    <!--
+      Demo ini pakai import map agar bisa 'import ... from "onnxruntime-web"'.
+      Di proyek nyata, pakai bundler (Vite/webpack) + npm i onnxruntime-web.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "onnxruntime-web": "https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.webgpu.min.mjs"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import { loadModel, detect } from "./yolo-onnx.js";
+      import { evaluateViolations } from "./violation-logic.js";
+
+      const statusEl = document.getElementById("status");
+      const outEl = document.getElementById("out");
+      const canvas = document.getElementById("canvas");
+      const ctx = canvas.getContext("2d");
+
+      // Ganti path ini ke lokasi best.onnx kamu (file statis).
+      const MODEL_URL = "../model/best.onnx";
+
+      // Contoh aturan pelanggaran (koordinat dalam piksel gambar asli).
+      const RULES = [
+        {
+          id: "trotoar",
+          label: "PKL di area terlarang",
+          type: "zone-rect",
+          area: { x1: 0, y1: 0, x2: 99999, y2: 99999 }, // contoh: seluruh gambar
+          minOverlap: 0.3,
+        },
+      ];
+
+      let session;
+      try {
+        session = await loadModel(MODEL_URL);
+        statusEl.textContent = "Model siap. Pilih gambar.";
+      } catch (e) {
+        statusEl.textContent = "Gagal memuat model: " + e.message;
+      }
+
+      document.getElementById("file").addEventListener("change", async (ev) => {
+        const f = ev.target.files[0];
+        if (!f || !session) return;
+        const img = new Image();
+        img.src = URL.createObjectURL(f);
+        await img.decode();
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+
+        statusEl.textContent = "Memproses...";
+        const { detections } = await detect(session, img, {
+          confThreshold: 0.25,
+          iouThreshold: 0.45,
+        });
+
+        // Gambar bounding box
+        ctx.lineWidth = Math.max(2, img.width / 300);
+        ctx.strokeStyle = "red";
+        ctx.fillStyle = "red";
+        ctx.font = `${Math.max(14, img.width / 50)}px sans-serif`;
+        for (const d of detections) {
+          const { x1, y1, x2, y2 } = d.bbox;
+          ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+          ctx.fillText(`${d.className} ${(d.confidence * 100).toFixed(0)}%`, x1, Math.max(0, y1 - 4));
+        }
+
+        const { violations, summary } = evaluateViolations(detections, RULES);
+        statusEl.textContent = "Selesai.";
+        outEl.textContent = JSON.stringify({ detections, violations, summary }, null, 2);
+      });
+    </script>
+  </body>
+</html>
