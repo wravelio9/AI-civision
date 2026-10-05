@@ -7,7 +7,7 @@ from pathlib import Path
 #   python yolo.py
 
 BASE_DIR = Path(__file__).resolve().parent
-FALLBACK_MODEL = BASE_DIR / "yolo26n.pt"
+FALLBACK_MODEL = BASE_DIR / "model/yolo26n.pt"
 
 def _find_trained_model() -> Path:
     """
