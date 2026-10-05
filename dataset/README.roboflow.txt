@@ -2,7 +2,7 @@
 civision - vdataset civision
 ==============================
 
-This dataset was exported via roboflow.com on September 22, 2026 at 10:51 AM GMT
+This dataset was exported via roboflow.com on October 5, 2026 at 3:36 PM GMT
 
 Roboflow is an end-to-end computer vision platform that helps you
 * collaborate with your team on computer vision projects
@@ -17,7 +17,7 @@ visit https://github.com/roboflow/notebooks
 
 To find over 100k other datasets and pre-trained models, visit https://universe.roboflow.com
 
-The dataset includes 25 images.
+The dataset includes 308 images.
 Civision are annotated in YOLO26 format.
 
 No pre-processing or augmentation was applied.
