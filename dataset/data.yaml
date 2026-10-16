@@ -2,8 +2,8 @@ train: ../train/images
 val: ../valid/images
 test: ../test/images
 
-nc: 1
-names: ['gerobak']
+nc: 3
+names: ['civision', 'gerobak', 'non-gerobak']
 
 roboflow:
   workspace: wilson-ravelio
